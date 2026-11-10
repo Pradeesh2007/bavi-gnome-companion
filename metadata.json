@@ -1,0 +1,9 @@
+{
+  "uuid": "desktop-companion@pradeesh2007.github.io",
+  "name": "Desktop Companion",
+  "description": "Bavi, an animated anime companion who lives on your desktop. Release 0.1: character foundation (idle, roaming, turning, pointer look, click reaction, summon shortcut, quiet/focus/pause/hide controls).",
+  "shell-version": ["51"],
+  "settings-schema": "org.gnome.shell.extensions.desktop-companion",
+  "version": 2,
+  "version-name": "0.1.0"
+}

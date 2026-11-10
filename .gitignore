@@ -1,0 +1,27 @@
+
+# Generated packages and build output
+dist/
+*.shell-extension.zip
+
+# Test logs and runtime output
+test-logs/
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and IDE settings
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db

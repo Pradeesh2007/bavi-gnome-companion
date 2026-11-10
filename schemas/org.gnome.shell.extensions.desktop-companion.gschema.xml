@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.desktop-companion"
+          path="/org/gnome/shell/extensions/desktop-companion/">
+
+    <key name="hidden" type="b">
+      <default>false</default>
+      <summary>Hide Bavi</summary>
+      <description>When true Bavi is hidden and all of her timers and animations are stopped.</description>
+    </key>
+
+    <key name="paused" type="b">
+      <default>false</default>
+      <summary>Pause Bavi</summary>
+      <description>When true Bavi freezes where she is: no roaming, no idle animation, no pointer tracking.</description>
+    </key>
+
+    <key name="quiet-mode" type="b">
+      <default>false</default>
+      <summary>Quiet mode</summary>
+      <description>When true Bavi stays at her home position, does not roam and has no idle bobbing. She still reacts to clicks and still looks at the pointer.</description>
+    </key>
+
+    <key name="focus-mode" type="b">
+      <default>false</default>
+      <summary>Focus mode</summary>
+      <description>When true Bavi stays at home with her back to you, completely still, and ignores the pointer. Clicking her still gets a short reaction.</description>
+    </key>
+
+    <key name="roaming" type="b">
+      <default>true</default>
+      <summary>Roam occasionally</summary>
+      <description>Allow Bavi to walk away from her home position now and then and return.</description>
+    </key>
+
+    <key name="pointer-look" type="b">
+      <default>true</default>
+      <summary>Look toward the pointer</summary>
+      <description>When the pointer is near, Bavi turns toward it.</description>
+    </key>
+
+    <key name="character-height" type="i">
+      <default>240</default>
+      <range min="120" max="480"/>
+      <summary>Character height</summary>
+      <description>Height of Bavi on screen in logical pixels.</description>
+    </key>
+
+    <key name="home-corner" type="s">
+      <choices>
+        <choice value="bottom-left"/>
+        <choice value="bottom-right"/>
+      </choices>
+      <default>"bottom-left"</default>
+      <summary>Home position</summary>
+      <description>Corner of the primary monitor's work area where Bavi lives.</description>
+    </key>
+
+    <key name="summon-shortcut" type="as">
+      <default>["&lt;Super&gt;&lt;Alt&gt;b"]</default>
+      <summary>Summon shortcut</summary>
+      <description>Keyboard shortcut that makes Bavi come to the pointer. It also shows her if she is hidden or paused.</description>
+    </key>
+
+  </schema>
+</schemalist>
