@@ -1,10 +1,11 @@
-# Desktop Companion: release 0.1 (Bavi)
+# Desktop Companion: release 0.2 (Bavi)
 
 Bavi, a native GNOME Shell 51 desktop companion drawn from four reference poses (front, right, left, back): idle, pointer look,
 roaming with turns, click reaction, right-click menu, summon shortcut, Quiet/Focus/Pause/Hide controls and a preferences window.
-See `docs/release-0.1.md` for scope and limitations and `docs/test-plan-0.1.md` for the tests.
+Release 0.2 adds a backpack and notebook: 12 permanent slots, a 24 h pocket, files (by reference), notes and links, search,
+open/reveal/copy/remove (see `docs/release-0.2.md` and `docs/test-plan-0.2.md`). Release 0.1 scope: `docs/release-0.1.md`.
 
-**Nothing in this bundle has been run on GNOME Shell. There is no commit hash and no test result yet.**
+**Nothing in the 0.2 code has been run on GNOME Shell.** The pure logic has Node tests (`tests/`); the 0.1.0 test run so far only shows startup and roaming in the log.
 
 ## Project tree
 
@@ -22,9 +23,11 @@ desktop-companion/
 │   ├── debug.js                  read-only diagnostics, active only with DESKTOP_COMPANION_DEBUG=1..3
 │   ├── environment.js            Shell integration (work area, chrome, pointer, overview, keybinding)
 │   ├── menu.js                   right-click context menu
+│   ├── backpack/                 release 0.2: model.js (pure), store.js, portal.js, service.js, dialog.js
 │   └── character/
 │       ├── actor.js              view: sprite actors, gestures, drawing primitives
 │       └── controller.js         behaviour: idle, look, roam, click, summon, modes
+├── tests/                        Node tests for the backpack logic (model, service/store with Gio stand-ins)
 ├── tools/
 │   ├── common.sh                 shared definitions
 │   ├── package.sh                builds dist/<uuid>.shell-extension.zip (never installs or launches)
@@ -33,6 +36,8 @@ desktop-companion/
 │   ├── nested-inner.sh           internal: runs inside the private D-Bus session
 │   └── nested-ctl.sh             control script for the running isolated session
 └── docs/
+    ├── release-0.2.md            backpack scope, design choices, safety rules, unverified APIs
+    ├── test-plan-0.2.md          release 0.2 tests
     ├── release-0.1.md            scope, assets, APIs, limitations
     ├── test-plan-0.1.md          release 0.1 tests
     ├── architecture.md           Phase 0 architecture (lifecycle design still applies)

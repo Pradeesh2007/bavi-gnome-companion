@@ -62,5 +62,18 @@
       <description>Keyboard shortcut that makes Bavi come to the pointer. It also shows her if she is hidden or paused.</description>
     </key>
 
+    <key name="backpack-shortcut" type="as">
+      <default>["&lt;Super&gt;&lt;Alt&gt;i"]</default>
+      <summary>Backpack shortcut</summary>
+      <description>Keyboard shortcut that opens Bavi's backpack. It works even while Bavi is hidden.</description>
+    </key>
+
+    <key name="pocket-expiry-hours" type="i">
+      <default>24</default>
+      <range min="1" max="168"/>
+      <summary>Pocket lifetime</summary>
+      <description>Hours an item stays in the pocket before it disappears. Items already in the pocket keep the lifetime they had when they were added.</description>
+    </key>
+
   </schema>
 </schemalist>

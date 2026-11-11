@@ -74,24 +74,49 @@ export default class DesktopCompanionPreferences extends ExtensionPreferences {
         });
         appearance.add(cornerRow);
 
-        // Shortcut
+        // Shortcuts
+        const shortcutRow = (group, title, key) => {
+            const row = new Adw.EntryRow({title, show_apply_button: true});
+            row.set_text(settings.get_strv(key)[0] ?? '');
+            row.connect('apply', () => {
+                const text = row.get_text().trim();
+                const [ok] = Gtk.accelerator_parse(text);
+                if (ok) {
+                    row.remove_css_class('error');
+                    settings.set_strv(key, [text]);
+                } else {
+                    row.add_css_class('error');
+                }
+            });
+            group.add(row);
+        };
+
         const keys = new Adw.PreferencesGroup({
-            title: 'Summon shortcut',
-            description: 'Makes Bavi come to the pointer and shows her if she is hidden or paused. Example: <Super><Alt>b',
+            title: 'Shortcuts',
+            description: 'Write the accelerator the way the current value is written. Summon makes Bavi come to the ' +
+                'pointer and shows her if she is hidden or paused. The backpack shortcut works even while she is hidden.',
         });
         page.add(keys);
-        const shortcutRow = new Adw.EntryRow({title: 'Accelerator', show_apply_button: true});
-        shortcutRow.set_text(settings.get_strv('summon-shortcut')[0] ?? '');
-        shortcutRow.connect('apply', () => {
-            const text = shortcutRow.get_text().trim();
-            const [ok] = Gtk.accelerator_parse(text);
-            if (ok) {
-                shortcutRow.remove_css_class('error');
-                settings.set_strv('summon-shortcut', [text]);
-            } else {
-                shortcutRow.add_css_class('error');
-            }
+        shortcutRow(keys, 'Summon Bavi', 'summon-shortcut');
+        shortcutRow(keys, 'Open the backpack', 'backpack-shortcut');
+
+        // Backpack
+        const backpackGroup = new Adw.PreferencesGroup({
+            title: 'Backpack',
+            description: 'Items in the backpack\u2019s 12 slots stay until you remove them. Items in the pocket disappear ' +
+                'after this time. Changing it affects items added from now on. Files are only referenced: removing ' +
+                'an item never deletes the file.',
         });
-        keys.add(shortcutRow);
+        page.add(backpackGroup);
+        const expiryRow = new Adw.SpinRow({
+            title: 'Pocket lifetime',
+            subtitle: 'Hours before a pocket item disappears.',
+            adjustment: new Gtk.Adjustment({
+                lower: 1, upper: 168, step_increment: 1, page_increment: 12,
+                value: settings.get_int('pocket-expiry-hours'),
+            }),
+        });
+        settings.bind('pocket-expiry-hours', expiryRow, 'value', Gio.SettingsBindFlags.DEFAULT);
+        backpackGroup.add(expiryRow);
     }
 }

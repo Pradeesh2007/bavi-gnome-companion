@@ -3,6 +3,7 @@
 // Lifecycle only. enable() builds one object graph owned by a fresh Disposer; disable() disposes it.
 // Nothing is kept at module level except the cycle counter used for log messages.
 
+import GLib from 'gi://GLib';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {Disposer, liveCounts} from './lib/disposer.js';
@@ -10,6 +11,8 @@ import {Environment} from './lib/environment.js';
 import {CharacterActor, liveActorCount} from './lib/character/actor.js';
 import {CharacterController} from './lib/character/controller.js';
 import {CompanionMenu} from './lib/menu.js';
+import {BackpackService} from './lib/backpack/service.js';
+import {BackpackUI} from './lib/backpack/dialog.js';
 import * as debug from './lib/debug.js';
 
 const log = (...args) => console.log('[desktop-companion]', ...args);
@@ -56,6 +59,21 @@ export default class DesktopCompanionExtension extends Extension {
 
             let controller = null;
             let menu = null;
+            let backpackUI = null;
+
+            // Backpack (release 0.2): the service owns storage and the expiry timer, the UI owns the dialog.
+            // Cleanup callbacks run newest first, so the window is destroyed before the service.
+            const getExpiryHours = () => settings.get_int('pocket-expiry-hours');
+            const backpack = new BackpackService({
+                disposer,
+                dataDir: GLib.build_filenamev([GLib.get_user_data_dir(), 'desktop-companion']),
+                getExpiryHours,
+                createLaunchContext: () => environment.createLaunchContext(),
+                onChanged: () => backpackUI?.refresh(),
+            });
+            disposer.add(() => backpack.destroy(), 'destroy backpack service');
+            backpackUI = new BackpackUI({service: backpack, environment, getExpiryHours});
+            disposer.add(() => backpackUI.destroy(), 'destroy backpack window');
             const actor = new CharacterActor({
                 environment,
                 disposer,
@@ -83,6 +101,8 @@ export default class DesktopCompanionExtension extends Extension {
                     'roaming': settings.get_boolean('roaming'),
                 }),
                 actions: {
+                    // Opened a moment later so the context menu has released its own grab first.
+                    backpack: () => disposer.once(120, () => backpackUI.open()),
                     summon: summonNow,
                     home: () => controller.returnHome(),
                     set: (key, value) => settings.set_boolean(key, value),
@@ -91,9 +111,11 @@ export default class DesktopCompanionExtension extends Extension {
             });
             disposer.add(() => menu.destroy(), 'destroy context menu');
 
+            backpack.start();
             controller.start(config);
             disposer.connect(settings, 'changed', () => controller.configure(readConfig(settings)));
             environment.addKeybinding('summon-shortcut', settings, summonNow);
+            environment.addKeybinding('backpack-shortcut', settings, () => backpackUI.open());
 
             log(`enabled #${this._cycle}; live: ${formatLive()}`);
         } catch (e) {

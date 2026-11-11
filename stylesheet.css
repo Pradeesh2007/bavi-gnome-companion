@@ -1,2 +1,20 @@
-/* Release 0.1: the character is drawn from PNG poses whose background-image is set per widget in
-   lib/character/actor.js. No shared rules are needed. */
+/* Release 0.2: the character is still drawn from inline styles (lib/character/actor.js); these rules style the
+   backpack window (lib/backpack/dialog.js). */
+
+.bavi-dialog { min-width: 620px; }
+.bavi-header { padding-bottom: 8px; }
+.bavi-title { font-size: 130%; font-weight: bold; }
+.bavi-count { color: rgba(255, 255, 255, 0.65); }
+.bavi-entry { margin-bottom: 6px; }
+.bavi-status { padding: 6px 10px; margin-bottom: 6px; border-radius: 6px; background-color: rgba(255, 255, 255, 0.08); }
+.bavi-status-error { background-color: rgba(220, 70, 60, 0.35); }
+.bavi-scroll { height: 340px; }
+.bavi-note-scroll { height: 200px; }
+.bavi-note-text { padding: 4px; }
+.bavi-section { font-weight: bold; padding-top: 10px; padding-bottom: 4px; }
+.bavi-empty { color: rgba(255, 255, 255, 0.55); padding: 2px 8px 6px 8px; }
+.bavi-row { padding: 6px 8px; margin-bottom: 4px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.06); spacing: 8px; }
+.bavi-row-title { font-weight: bold; }
+.bavi-row-sub { font-size: 90%; color: rgba(255, 255, 255, 0.6); }
+.bavi-row-buttons { spacing: 4px; }
+.bavi-button { padding: 3px 10px; }
