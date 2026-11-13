@@ -10,6 +10,7 @@ import {Disposer, liveCounts} from './lib/disposer.js';
 import {Environment} from './lib/environment.js';
 import {CharacterActor, liveActorCount} from './lib/character/actor.js';
 import {CharacterController} from './lib/character/controller.js';
+import {loadWalkAssets} from './lib/character/walkassets.js';
 import {CompanionMenu} from './lib/menu.js';
 import {BackpackService} from './lib/backpack/service.js';
 import {BackpackUI} from './lib/backpack/dialog.js';
@@ -74,15 +75,17 @@ export default class DesktopCompanionExtension extends Extension {
             disposer.add(() => backpack.destroy(), 'destroy backpack service');
             backpackUI = new BackpackUI({service: backpack, environment, getExpiryHours});
             disposer.add(() => backpackUI.destroy(), 'destroy backpack window');
+            const walk = loadWalkAssets(`${this.path}/assets/walk`);   // null disables the walking animation only
             const actor = new CharacterActor({
                 environment,
                 disposer,
                 assetDir: `${this.path}/assets`,
+                walk,
                 height: config.height,
                 onClick: () => controller?.handleClick(),
                 onSecondaryClick: () => menu?.open(),
             });
-            controller = new CharacterController({actor, environment, disposer});
+            controller = new CharacterController({actor, environment, disposer, walk: walk?.manifest ?? null});
 
             const summonNow = () => {
                 if (settings.get_boolean('hidden'))

@@ -1,11 +1,11 @@
-# Desktop Companion: release 0.2 (Bavi)
+# Desktop Companion: release 0.2.1 (Bavi)
 
 Bavi, a native GNOME Shell 51 desktop companion drawn from four reference poses (front, right, left, back): idle, pointer look,
 roaming with turns, click reaction, right-click menu, summon shortcut, Quiet/Focus/Pause/Hide controls and a preferences window.
-Release 0.2 adds a backpack and notebook: 12 permanent slots, a 24 h pocket, files (by reference), notes and links, search,
+Release 0.2.1 adds the walking animation (start, loop and stop sequences, `docs/release-0.2.1.md`) and fixes the backpack window (`No property vertical on StBoxLayout`). Release 0.2 added a backpack and notebook: 12 permanent slots, a 24 h pocket, files (by reference), notes and links, search,
 open/reveal/copy/remove (see `docs/release-0.2.md` and `docs/test-plan-0.2.md`). Release 0.1 scope: `docs/release-0.1.md`.
 
-**Nothing in the 0.2 code has been run on GNOME Shell.** The pure logic has Node tests (`tests/`); the 0.1.0 test run so far only shows startup and roaming in the log.
+**Nothing in 0.2.1 has been verified on a real GNOME Shell by the author of this code.** Node/Python tests (real) and mocked tests are in `tests/`; the GNOME Shell 51.1 steps are in `docs/test-plan-0.2.1.md`. Walking assets: `assets/walk/`, rebuilt by `tools/build-walk-assets.py` from `art-source/walking/` (your approved frames, never modified).
 
 ## Project tree
 
@@ -27,7 +27,8 @@ desktop-companion/
 │   └── character/
 │       ├── actor.js              view: sprite actors, gestures, drawing primitives
 │       └── controller.js         behaviour: idle, look, roam, click, summon, modes
-├── tests/                        Node tests for the backpack logic (model, service/store with Gio stand-ins)
+├── art-source/                   approved 720x1280 walking frames + 270x480 runtime copies (not shipped)
+├── tests/                        Node/Python tests: walk logic, assets (real); controller, service, dialog (mocked)
 ├── tools/
 │   ├── common.sh                 shared definitions
 │   ├── package.sh                builds dist/<uuid>.shell-extension.zip (never installs or launches)
@@ -36,6 +37,8 @@ desktop-companion/
 │   ├── nested-inner.sh           internal: runs inside the private D-Bus session
 │   └── nested-ctl.sh             control script for the running isolated session
 └── docs/
+    ├── release-0.2.1.md          walking animation, backpack fix, state flow, timing, tuning
+    ├── test-plan-0.2.1.md        GNOME Shell 51.1 test steps
     ├── release-0.2.md            backpack scope, design choices, safety rules, unverified APIs
     ├── test-plan-0.2.md          release 0.2 tests
     ├── release-0.1.md            scope, assets, APIs, limitations
