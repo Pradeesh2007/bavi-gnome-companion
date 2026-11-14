@@ -31,6 +31,7 @@ class File {
 }
 export const launched = [];
 export default {
+    SettingsBindFlags: {DEFAULT: 0},
     File, FileType, IOErrorEnum, io_error_quark: () => QUARK,
     FileCreateFlags: {REPLACE_DESTINATION: 1, PRIVATE: 2}, FileCopyFlags: {NONE: 0}, FileQueryInfoFlags: {NONE: 0},
     Cancellable: class { cancel() {} }, DBusCallFlags: {NONE: 0, NO_AUTO_START: 1}, DBusSignalFlags: {NONE: 0},

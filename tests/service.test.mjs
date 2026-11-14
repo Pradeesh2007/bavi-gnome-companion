@@ -97,7 +97,7 @@ test('partially invalid file: valid items kept, original preserved as a copy', (
 test('a NEWER format file is never touched; changes are refused with the reason', () => {
     const dir = tmp(); const raw = JSON.stringify({version: 99, items: []}); fs.writeFileSync(`${dir}/inventory.json`, raw);
     const {svc} = make(dir);
-    assert.match(svc.unavailableReason, /newer Bavi/);
+    assert.match(svc.unavailableReason, /newer version of this extension/);
     assert.equal(codeOf(() => svc.addText({text: 'x'}, 'backpack')), 'unavailable');
     assert.equal(fs.readFileSync(`${dir}/inventory.json`, 'utf8'), raw);
 });
@@ -152,6 +152,57 @@ test('reveal falls back to the folder when the file manager call fails; missing 
 test('after destroy(): pending portal cancelled, mutations refused', () => {
     const dir = tmp(); const {svc} = make(dir); let cancelled = false; svc._portal.cancel = () => { cancelled = true; };
     svc.destroy(); assert.equal(cancelled, true); assert.equal(codeOf(() => svc.addText({text: 'x'}, 'backpack')), 'closed');
+});
+
+test('receive: files are stored by reference (original untouched), notes and links are stored, with the right kinds', () => {
+    const dir = tmp(); const {svc} = make(dir); const f = path.join(dir, 'doc.txt'); fs.writeFileSync(f, 'precious'); const before = fs.statSync(f);
+    const r = svc.receive([{kind: 'file', uri: `file://${f}`}, {kind: 'link', url: 'https://example.org/a'}, {kind: 'text', text: 'remember the milk'}], 'backpack');
+    assert.deepEqual(r.skipped, []); assert.deepEqual(r.added.map(i => i.kind), ['file', 'link', 'text']);
+    assert.equal(svc.snapshot().backpack.length, 3);
+    const file = svc.snapshot().backpack.find(i => i.kind === 'file'); assert.equal(file.path, f); assert.equal(file.slot !== null, true);
+    assert.equal(fs.readFileSync(f, 'utf8'), 'precious'); assert.equal(fs.statSync(f).mtimeMs, before.mtimeMs); assert.equal(fs.existsSync(f), true);
+    assert.equal(make(dir).svc.snapshot().backpack.length, 3, 'persisted');
+});
+
+test('receive into the pocket uses the pocket lifetime and the pocket limit', () => {
+    const dir = tmp(); const {svc} = make(dir, {hours: 2});
+    const r = svc.receive([{kind: 'text', text: 'temp'}], 'pocket'); assert.equal(r.added[0].slot, null);
+    assert.ok(Math.abs((r.added[0].expiresAt - r.added[0].createdAt) - 2 * 3600_000) < 5);
+    for (let i = 0; i < 11; i++) svc.receive([{kind: 'text', text: `t${i}`}], 'pocket');
+    const full = svc.receive([{kind: 'text', text: 'one too many'}], 'pocket'); assert.equal(full.added.length, 0); assert.equal(full.skipped[0].code, 'pocket-full');
+});
+
+test('receive with a full backpack: nothing is replaced or discarded, the reason is explicit, and the code says why', () => {
+    const dir = tmp(); const {svc} = make(dir);
+    for (let i = 0; i < 12; i++) svc.addText({text: `n${i}`}, 'backpack');
+    const before = fs.readFileSync(`${dir}/inventory.json`, 'utf8');
+    const r = svc.receive([{kind: 'text', text: 'new'}, {kind: 'link', url: 'https://example.org'}], 'backpack');
+    assert.equal(r.added.length, 0); assert.deepEqual(r.skipped.map(x => x.code), ['slots-full', 'slots-full']); assert.match(r.skipped[0].reason, /12 of 12 slots/);
+    assert.equal(fs.readFileSync(`${dir}/inventory.json`, 'utf8'), before);
+    assert.equal(svc.snapshot().backpack.length, 12);
+});
+
+test('receive: a partly accepted batch stores what fits and reports the rest; duplicates, folders and missing files are skipped', () => {
+    const dir = tmp(); const {svc} = make(dir); const f = path.join(dir, 'a.txt'); fs.writeFileSync(f, 'x'); fs.mkdirSync(path.join(dir, 'folder'));
+    for (let i = 0; i < 11; i++) svc.addText({text: `n${i}`}, 'backpack');
+    const items = [{kind: 'file', uri: `file://${f}`}, {kind: 'file', uri: `file://${path.join(dir, 'folder')}`}, {kind: 'file', uri: `file://${dir}/gone.txt`}, {kind: 'text', text: 'second one'}];
+    const r = svc.receive(items, 'backpack');
+    assert.equal(r.added.length, 1); assert.deepEqual(r.skipped.map(x => x.code), ['not-a-file', 'missing', 'slots-full']);
+    assert.equal(svc.receive([{kind: 'file', uri: `file://${f}`}], 'pocket').skipped[0].code, 'duplicate');
+    assert.equal(svc.snapshot().backpack.length, 12);
+});
+
+test('receive: a failing save rolls everything back; unavailable and shut-down services refuse', () => {
+    const dir = tmp(); const {svc} = make(dir); svc.addText({text: 'safe'}, 'backpack');
+    svc._store.save = () => { throw new Error('disk full'); };
+    const r = svc.receive([{kind: 'text', text: 'lost?'}], 'backpack'); assert.equal(r.skipped[0].code, 'save-failed'); assert.equal(svc.snapshot().backpack.length, 1);
+    const d2 = tmp(); fs.writeFileSync(`${d2}/inventory.json`, JSON.stringify({version: 99, items: []})); assert.equal(codeOf(() => make(d2).svc.receive([{kind: 'text', text: 'x'}], 'backpack')), 'unavailable');
+    const s3 = make(tmp()).svc; s3.destroy(); assert.equal(codeOf(() => s3.receive([{kind: 'text', text: 'x'}], 'backpack')), 'closed');
+});
+
+test('receive: over-long notes are refused whole (never truncated)', () => {
+    const {svc} = make(tmp()); const r = svc.receive([{kind: 'text', text: 'x'.repeat(20001)}], 'backpack');
+    assert.equal(r.added.length, 0); assert.equal(r.skipped[0].code, 'too-long'); assert.equal(svc.snapshot().backpack.length, 0);
 });
 
 for (const [name, fn] of tests) {

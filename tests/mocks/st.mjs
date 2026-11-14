@@ -63,7 +63,16 @@ class Entry extends Actor {
 }
 class Button extends Actor { constructor(p) { super('Button', p); } }
 
-const clipboard = {text: null, set_text(type, text) { this.text = text; this.type = type; }};
+// St.Clipboard stand-in with the 51.1 API shape: get_mimetypes(type), get_content(type, mimetype, cb(clipboard, bytes)),
+// get_text(type, cb(clipboard, text)), set_text(type, text). Callbacks run asynchronously like the real ones.
+const clipboard = {
+    text: null, mimetypes: [], content: {}, plain: null, reads: 0,
+    set_text(type, text) { this.text = text; this.type = type; },
+    get_mimetypes() { this.reads++; return [...this.mimetypes]; },
+    get_content(type, mime, cb) { this.reads++; const data = this.content[mime]; setImmediate(() => cb(this, data === undefined ? null : {get_data: () => new TextEncoder().encode(data)})); },
+    get_text(type, cb) { this.reads++; setImmediate(() => cb(this, this.plain)); },
+    reset() { this.mimetypes = []; this.content = {}; this.plain = null; this.reads = 0; },
+};
 export const state = {clipboard};
 export default {
     Widget, BoxLayout, ScrollView, Label, Entry, Button,

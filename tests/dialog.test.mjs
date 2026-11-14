@@ -13,17 +13,20 @@ import {ModalDialog, instances} from './mocks/modaldialog.mjs';
 import {BackpackService} from '../lib/backpack/service.js';
 import {BackpackUI} from '../lib/backpack/dialog.js';
 
+const nameBox = {value: ''};
 const errors = [];
 const realError = console.error; console.error = (...a) => { errors.push(a.map(String).join(' ')); };
 const realLog = console.log;
 
 class FakeDisposer { repeat() { return 1; } once() { return 1; } cancel() {} }
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bavi-ui-'));
-function make({hours = 24} = {}) {
-    errors.length = 0; instances.length = 0;
+function make({hours = 24, name = ''} = {}) {
+    errors.length = 0; instances.length = 0; stState.clipboard.reset();
     const service = new BackpackService({disposer: new FakeDisposer(), dataDir: tmp(), getExpiryHours: () => hours, createLaunchContext: () => null, onChanged: () => ui.refresh()});
     service.start();
-    const ui = new BackpackUI({service, environment: {currentTime: () => 0}, getExpiryHours: () => hours});
+    const received = {count: 0};
+    const ui = new BackpackUI({service, environment: {currentTime: () => 0}, getExpiryHours: () => hours, getName: () => nameBox.value, onReceived: () => { received.count++; }});
+    nameBox.value = name; ui.received = received;
     return {service, ui, dialog: () => instances.at(-1)};
 }
 const all = d => [...d.contentLayout.walk()];
@@ -51,8 +54,8 @@ test('opening the backpack builds the dialog without any error (the reported fai
     noErrors(); const d = t.dialog();
     assert.equal(instances.length, 1); assert.equal(d.state, 0 /* OPENED */); assert.deepEqual(d.openArgs, []);
     assert.equal(d.styleClass, 'bavi-dialog'); assert.equal(d.initialFocus, entries(d)[0].clutter_text);
-    assert.ok(labels(d).includes('Bavi\u2019s backpack'));
-    assert.deepEqual(footer(d), ['Add file\u2026', 'Add note', 'Add link', 'Adding to: Backpack', 'Close']);
+    assert.ok(labels(d).includes('Backpack'), 'unnamed: neutral title'); assert.ok(!labels(d).some(l => /Bavi/.test(l)), 'no fabricated name anywhere in the window');
+    assert.deepEqual(footer(d), ['Add file\u2026', 'Add note', 'Add link', 'Paste', 'Adding to: Backpack', 'Close']);
     const text = labels(d);
     assert.ok(text.includes('Backpack \u2014 0 of 12 slots') && text.includes('Pocket \u2014 0 of 12 \u00b7 items disappear after 24 h'));
 });
@@ -77,7 +80,7 @@ test('add note: empty note shows the error and keeps the form; a real note is sa
     const [title, body] = formEntries(d); assert.equal(body.clutter_text.single_line_mode, false); assert.equal(body.clutter_text.line_wrap, true); assert.equal(body.clutter_text.activatable, false);
     d.press('Save to backpack'); assert.equal(status(d), 'The note is empty.'); assert.deepEqual(footer(d), ['Cancel', 'Save to backpack']);
     title.set_text('Shopping'); body.set_text('milk\neggs'); d.press('Save to backpack');
-    assert.deepEqual(footer(d), ['Add file\u2026', 'Add note', 'Add link', 'Adding to: Backpack', 'Close']);
+    assert.deepEqual(footer(d), ['Add file\u2026', 'Add note', 'Add link', 'Paste', 'Adding to: Backpack', 'Close']);
     assert.equal(status(d), 'Note saved to the backpack.'); assert.ok(labels(d).some(l => l.startsWith('Note') && l.includes('Shopping')));
     assert.equal(t.service.snapshot().backpack[0].text, 'milk\neggs'); noErrors();
 });
@@ -141,6 +144,69 @@ test('Add file: the dialog is closed while the portal chooser is open (modal gra
     delete t.service.importFiles;                                   // back to the real service; only the portal itself fails
     t.service._portal.chooseFiles = async () => { throw new Error('The file chooser portal (xdg-desktop-portal) is not available.'); };
     t.dialog().press('Add file\u2026'); await new Promise(r => setImmediate(r)); assert.match(status(t.dialog()), /not available/); noErrors();
+});
+
+test('a named character: the title uses the name, and changes live while the window is open', () => {
+    const t = make({name: 'Mika'}); t.ui.open(); const d = t.dialog();
+    assert.ok(labels(d).includes('Mika\u2019s backpack'));
+    nameBox.value = ''; t.ui.refreshTitle(); assert.ok(labels(d).includes('Backpack'));
+    nameBox.value = 'Rin'; t.ui.refreshTitle(); assert.ok(labels(d).includes('Rin\u2019s backpack')); noErrors();
+});
+
+test('Paste: selected text becomes a note, the character acknowledges, and the clipboard is only read on demand', async () => {
+    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
+    assert.equal(clip.reads, 0, 'opening the window never touches the clipboard'); clip.mimetypes = ['text/plain', 'UTF8_STRING']; clip.plain = 'remember the milk\nand eggs';
+    d.press('Paste'); await tick(); await tick();
+    assert.equal(clip.reads > 0, true); assert.equal(status(d), 'Added 1 note to the backpack.'); assert.equal(t.ui.received.count, 1);
+    const note = t.service.snapshot().backpack[0]; assert.equal(note.kind, 'text'); assert.equal(note.text, 'remember the milk\nand eggs'); noErrors();
+    const readsAfter = clip.reads; await tick(); await tick(); assert.equal(clip.reads, readsAfter, 'no background reading');
+});
+
+test('Paste: an http(s) address becomes a link; other schemes and javascript: are not links', async () => {
+    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
+    clip.mimetypes = ['text/plain']; clip.plain = ' https://example.org/path '; d.press('Paste'); await tick(); await tick();
+    assert.equal(t.service.snapshot().backpack[0].kind, 'link'); assert.equal(status(d), 'Added 1 link to the backpack.');
+    clip.plain = 'javascript:alert(1)'; d.press('Paste'); await tick(); await tick();
+    assert.equal(t.service.snapshot().backpack[1].kind, 'text', 'stored as inert text, never as a link'); noErrors();
+});
+
+test('Paste: files copied in the file manager are stored by reference and the originals are untouched', async () => {
+    const t = make(); const f = path.join(tmp(), 'report.txt'); fs.writeFileSync(f, 'original'); const mtime = fs.statSync(f).mtimeMs;
+    t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
+    clip.mimetypes = ['x-special/gnome-copied-files', 'text/uri-list', 'text/plain']; clip.content['text/uri-list'] = `file://${f}\r\n`;
+    d.press('Paste'); await tick(); await tick();
+    assert.equal(status(d), 'Added 1 file to the backpack.'); const item = t.service.snapshot().backpack[0]; assert.equal(item.kind, 'file'); assert.equal(item.path, f);
+    assert.equal(fs.readFileSync(f, 'utf8'), 'original'); assert.equal(fs.statSync(f).mtimeMs, mtime);
+    // the copied-files format used by GNOME Files on its own
+    const g = path.join(path.dirname(f), 'b.txt'); fs.writeFileSync(g, 'x'); clip.reset(); clip.mimetypes = ['x-special/gnome-copied-files']; clip.content['x-special/gnome-copied-files'] = `cut\nfile://${g}`;
+    d.press('Paste'); await tick(); await tick(); assert.equal(t.service.snapshot().backpack.length, 2); assert.ok(fs.existsSync(g), 'a "cut" never moves or deletes anything'); noErrors();
+});
+
+test('Paste with a full backpack: clear explanation, nothing replaced, content stays on the clipboard', async () => {
+    const t = make(); for (let i = 0; i < 12; i++) t.service.addText({text: `n${i}`}, 'backpack');
+    t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; const before = JSON.stringify(t.service.snapshot().backpack);
+    clip.mimetypes = ['text/plain']; clip.plain = 'one more'; d.press('Paste'); await tick(); await tick();
+    assert.match(status(d), /12 of 12 slots/); assert.match(status(d), /Nothing was replaced or removed/); assert.match(status(d), /still on your clipboard/);
+    assert.equal(JSON.stringify(t.service.snapshot().backpack), before); assert.equal(t.ui.received.count, 0); assert.equal(clip.plain, 'one more');
+    d.press('Adding to: Backpack'); d.press('Paste'); await tick(); await tick();                  // the other destination still works
+    assert.equal(t.service.snapshot().pocket.length, 1); noErrors();
+});
+
+test('Paste: rejected or unusable clipboard content gives a clear message and changes nothing', async () => {
+    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; const store = () => fs.readFileSync(t.service.storagePath ?? '/nonexistent', 'utf8');
+    d.press('Paste'); await tick(); await tick(); assert.match(status(d), /no file, link or text/);                          // empty clipboard
+    clip.mimetypes = ['image/png']; d.press('Paste'); await tick(); await tick(); assert.match(status(d), /no file, link or text/);  // image only
+    clip.reset(); clip.mimetypes = ['text/uri-list']; clip.content['text/uri-list'] = 'javascript:alert(1)\r\nsmb://host/share';
+    d.press('Paste'); await tick(); await tick(); assert.match(status(d), /Skipped javascript:alert\(1\): "javascript:" addresses are not supported/);
+    clip.reset(); clip.mimetypes = ['text/plain']; clip.plain = 'a\u0000b'; d.press('Paste'); await tick(); await tick(); assert.match(status(d), /binary data/);
+    clip.reset(); clip.mimetypes = ['text/plain']; clip.plain = 'x'.repeat(20001); d.press('Paste'); await tick(); await tick(); assert.match(status(d), /too long/);
+    assert.equal(t.service.snapshot().backpack.length + t.service.snapshot().pocket.length, 0); assert.equal(t.ui.received.count, 0); noErrors();
+});
+
+test('Paste into the pocket, and Paste after the window was closed while reading, do not throw', async () => {
+    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; clip.mimetypes = ['text/plain']; clip.plain = 'later';
+    d.press('Adding to: Backpack'); d.press('Paste'); d.press('Close');                          // closes before the async read finishes
+    await tick(); await tick(); assert.equal(t.service.snapshot().pocket.length, 1); noErrors();
 });
 
 test('a message from an earlier session is not shown when the backpack is opened again', () => {

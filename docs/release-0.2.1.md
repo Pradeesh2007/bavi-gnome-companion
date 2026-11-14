@@ -1,5 +1,8 @@
 # Release 0.2.1: walking animation and backpack window fix
 
+> **Superseded in 0.3.0:** the movement model described here (constant ground speed from `strideHeights` 0.56 and `travelFrames`) was measured to be wrong
+> (the real stride is about 0.43 x height) and was replaced by per-frame root motion; see `release-0.3.0.md` section 4. The rest of this document still applies.
+
 ## Verification status (read this first)
 | Level | What | Result |
 |---|---|---|

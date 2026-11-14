@@ -14,6 +14,7 @@ import {loadWalkAssets} from './lib/character/walkassets.js';
 import {CompanionMenu} from './lib/menu.js';
 import {BackpackService} from './lib/backpack/service.js';
 import {BackpackUI} from './lib/backpack/dialog.js';
+import {storedName} from './lib/name.js';
 import * as debug from './lib/debug.js';
 
 const log = (...args) => console.log('[desktop-companion]', ...args);
@@ -73,7 +74,7 @@ export default class DesktopCompanionExtension extends Extension {
                 onChanged: () => backpackUI?.refresh(),
             });
             disposer.add(() => backpack.destroy(), 'destroy backpack service');
-            backpackUI = new BackpackUI({service: backpack, environment, getExpiryHours});
+            backpackUI = new BackpackUI({service: backpack, environment, getExpiryHours, getName: () => storedName(settings.get_string('character-name')), onReceived: () => controller?.acknowledge()});
             disposer.add(() => backpackUI.destroy(), 'destroy backpack window');
             const walk = loadWalkAssets(`${this.path}/assets/walk`);   // null disables the walking animation only
             const actor = new CharacterActor({
@@ -117,6 +118,7 @@ export default class DesktopCompanionExtension extends Extension {
             backpack.start();
             controller.start(config);
             disposer.connect(settings, 'changed', () => controller.configure(readConfig(settings)));
+            disposer.connect(settings, 'changed::character-name', () => backpackUI.refreshTitle());
             environment.addKeybinding('summon-shortcut', settings, summonNow);
             environment.addKeybinding('backpack-shortcut', settings, () => backpackUI.open());
 

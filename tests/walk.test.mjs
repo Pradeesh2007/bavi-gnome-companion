@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {validateManifest, planWalk, WalkAnimator, groundSpeed, cycleMs} from '../lib/character/walk.js';
+import {validateManifest, planWalk, WalkAnimator, rootMotion, cycleMs} from '../lib/character/walk.js';
 
 let passed = 0;
 const test = (name, fn) => { try { fn(); passed++; console.log(`ok   ${name}`); } catch (e) { console.log(`FAIL ${name}\n     ${e.stack}`); process.exitCode = 1; } };
@@ -12,11 +12,12 @@ const real = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../assets/walk/wa
 // A synthetic manifest with arbitrary frame counts (the code must not depend on 7/10/25).
 function synth(start, loop, stop, extra = {}) {
     const frames = n => Array.from({length: n}, (_, i) => ({x: 2 + i * 10, y: 12, dy: 0}));
+    const travel = n => Array.from({length: n}, (_, i) => 2 + (i % 3));
     return {
         version: 1, frame: {width: 10, height: 20}, atlas: {image: 'a.png', width: 2000, height: 40}, figure: {left: 1, right: 9},
-        motion: {strideHeights: 0.56, minScale: 0.55, maxScale: 1.45},
-        sequences: {start: {frameMs: 93, travelFrames: start, frames: frames(start)}, loop: {frameMs: 93, frames: frames(loop)},
-                    stop: {frameMs: 93, travelFrames: Math.max(1, Math.floor(stop / 2)), frames: frames(stop)}}, ...extra,
+        motion: {footLock: {start: 1, loop: 0.7, stop: 1}, minScale: 0.55, maxScale: 1.45},
+        sequences: {start: {frameMs: 93, frames: frames(start), footTravel: travel(start)}, loop: {frameMs: 93, frames: frames(loop), footTravel: travel(loop)},
+                    stop: {frameMs: 93, frames: frames(stop), footTravel: travel(stop)}}, ...extra,
     };
 }
 
@@ -45,16 +46,18 @@ test('manifest validation rejects broken manifests', () => {
     assert.equal(validateManifest(null).ok, false);
     bad(m => { m.version = 2; }, /version/);
     bad(m => { delete m.sequences.loop; }, /loop/);
-    bad(m => { m.sequences.loop.frames = [m.sequences.loop.frames[0]]; }, /at least 2/);
-    bad(m => { m.sequences.start.frames = []; }, /start.frames/);
+    bad(m => { m.sequences.loop.frames = [m.sequences.loop.frames[0]]; m.sequences.loop.footTravel = [1]; }, /at least 2/);
+    bad(m => { m.sequences.start.frames = []; m.sequences.start.footTravel = []; }, /start.frames/);
     bad(m => { m.sequences.stop.frameMs = 5; }, /frameMs/);
-    bad(m => { m.sequences.stop.travelFrames = 99; }, /travelFrames/);
     bad(m => { m.sequences.start.frames[0].dy = -1; }, /dy/);
     bad(m => { m.sequences.start.frames[0].x = 99999; }, /outside the atlas/);
     bad(m => { m.sequences.start.frames[0].dy = m.sequences.start.frames[0].y + 5; }, /outside the atlas/);
     bad(m => { m.atlas.image = '../x.png'; }, /plain file name/);
-    bad(m => { m.motion.strideHeights = 9; }, /strideHeights/);
     bad(m => { m.figure.right = m.figure.left; }, /figure/);
+    bad(m => { m.motion.footLock.loop = 1.5; }, /footLock.loop/);
+    bad(m => { delete m.motion.footLock; }, /footLock/);
+    bad(m => { m.sequences.loop.footTravel.pop(); }, /footTravel/);
+    bad(m => { m.sequences.stop.footTravel[3] = -1; }, /footTravel/);
 });
 
 test('animator plays start, N loop cycles, stop, in order, for the real frame counts', () => {
@@ -131,45 +134,76 @@ test('framesUntilStop equals the real number of ticks until the first stop frame
     }
 });
 
-test('planner: distances add up exactly to the requested distance, with whole cycles', () => {
+const sumOf = a => a.reduce((x, y) => x + y, 0);
+
+test('root motion: blend keeps the distance, footLock 1 follows the art, footLock 0 is constant speed', () => {
+    const raw = real.sequences.loop.footTravel, m1 = structuredClone(real), m0 = structuredClone(real);
+    m1.motion.footLock.loop = 1; m0.motion.footLock.loop = 0;
+    assert.deepEqual(rootMotion(m1).loop.map(v => +v.toFixed(9)), raw.map(v => +v.toFixed(9)));
+    const flat = rootMotion(m0).loop; assert.ok(flat.every(v => Math.abs(v - flat[0]) < 1e-9));
+    for (const lock of [0, 0.3, 0.7, 1]) { const m = structuredClone(real); m.motion.footLock.loop = lock; assert.ok(Math.abs(sumOf(rootMotion(m).loop) - sumOf(raw)) < 1e-9); }
+    assert.ok(rootMotion(real).loop.every(v => v >= 0));
+});
+
+test('the measured stride is about 0.43 x character height and nothing in the planner assumes a frame count', () => {
+    const stride = sumOf(rootMotion(real).loop) / real.frame.height;
+    assert.ok(stride > 0.40 && stride < 0.46, `stride ${stride}`);
+    const m = synth(5, 6, 9); assert.equal(validateManifest(m).ok, true);
+    const p = planWalk({distance: 400, height: 100, manifest: m}); assert.ok(p && Number.isInteger(p.cycles));
+});
+
+test('foot contact (regression guard): planted-foot drift of the shipped manifest is far below the 0.2.1 model, measured on the art', () => {
+    // Reference = tools/analyze-foot-contact.py output (how far the figure must advance per frame for the planted foot to stay put).
+    const analysis = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../art-source/walk-foot-contact.json', import.meta.url)), 'utf8'));
+    const ratio = real.frame.height / 1280, disp = 240 / real.frame.height;                    // source px -> runtime px; runtime px -> display px at 240 px height
+    const ideal = analysis.loop.track.map(v => Math.max(0, v ?? 0) * ratio);
+    const peak = dx => { let worst = 0; const n = dx.length; for (let st = 0; st < n; st++) { let c = 0; for (let len = 1; len <= 5; len++) { c += dx[(st + len - 1) % n] - ideal[(st + len - 1) % n]; worst = Math.max(worst, Math.abs(c)); } } return worst * disp; };
+    const shipped = peak(rootMotion(real).loop);
+    const v021 = peak(Array(10).fill(0.56 * real.frame.height / 10));                         // what 0.2.1 did: constant speed, stride estimated at 0.56 x height
+    const constant = peak(Array(10).fill(ideal.reduce((a, b) => a + b, 0) / 10));
+    assert.ok(v021 > 25, `0.2.1 model drift ${v021.toFixed(1)}`);                             // the reported "floating" problem, measured
+    assert.ok(shipped <= 12.5, `shipped drift ${shipped.toFixed(1)} px`);
+    assert.ok(shipped < constant && shipped < 0.5 * v021, `shipped ${shipped.toFixed(1)} vs constant ${constant.toFixed(1)} vs 0.2.1 ${v021.toFixed(1)}`);
+    // the manifest data must agree with the analysis it was built from
+    assert.ok(Math.abs(real.sequences.loop.footTravel.reduce((a, b) => a + b, 0) - ideal.reduce((a, b) => a + b, 0)) < 0.5);
+});
+
+test('exact walks: distances add up to the requested distance, with whole cycles, scale inside the limits', () => {
     for (const height of [120, 240, 480]) for (let d = 60; d <= 2000; d += 37) {
-        const p = planWalk({distance: d, height, manifest: real});
+        const p = planWalk({distance: d, height, manifest: real, exact: true});
         if (!p) continue;
         assert.ok(Number.isInteger(p.cycles) && p.cycles >= 0);
-        assert.ok(Math.abs(p.start.distance + p.loop.distance + p.stop.distance - d) < 1e-6, `d=${d} h=${height}`);
+        assert.ok(Math.abs(p.total - d) < 1e-6, `d=${d} h=${height}`);
         assert.ok(p.scale >= real.motion.minScale && p.scale <= real.motion.maxScale);
-        assert.equal(p.start.ms, 7 * 93); assert.equal(p.loop.ms, p.cycles * 10 * 93); assert.equal(p.stop.ms, 12 * 93);
     }
 });
 
-test('planner: sliding is small for normal roaming distances, and very short walks are refused', () => {
-    const h = 240, stride = real.motion.strideHeights * h;
-    for (let d = 450; d <= 1800; d += 13) {
-        const p = planWalk({distance: d, height: h, manifest: real});
-        assert.ok(p, `d=${d}`); assert.ok(Math.abs(p.scale - 1) <= 0.2, `scale ${p.scale} at d=${d}`);
+test('snapped (roaming) walks: scale is exactly 1 (no sliding), distance within half a cycle, never beyond the room', () => {
+    const h = 240, motion = rootMotion(real), k = h / real.frame.height, dLoop = sumOf(motion.loop) * k;
+    for (let d = 200; d <= 1800; d += 11) {
+        const p = planWalk({distance: d, height: h, manifest: real, exact: false});
+        assert.ok(p, `d=${d}`); assert.equal(p.scale, 1);
+        assert.ok(Math.abs(p.total - d) <= dLoop / 2 + 1e-6, `d=${d} total=${p.total}`);
+        const limited = planWalk({distance: d, height: h, manifest: real, exact: false, maxTotal: d - 1});
+        if (limited) assert.ok(limited.total <= d - 1 + 1e-6);
     }
-    assert.equal(planWalk({distance: 10, height: h, manifest: real}), null);          // far too short: glide fallback
+});
+
+test('very short walks are refused (glide fallback); exact walks that would need too much stretching too', () => {
+    const h = 240;
+    assert.equal(planWalk({distance: 10, height: h, manifest: real}), null);
+    assert.equal(planWalk({distance: 10, height: h, manifest: real, exact: false}), null);
     assert.equal(planWalk({distance: 0, height: h, manifest: real}), null);
-    assert.ok(stride > 100);
+    const base = (sumOf(rootMotion(real).start) + sumOf(rootMotion(real).stop)) * h / real.frame.height;
+    assert.equal(planWalk({distance: base * 0.3, height: h, manifest: real}), null);
+    assert.ok(planWalk({distance: base, height: h, manifest: real}).cycles === 0);
 });
 
-test('planner: ground speed matches stride per cycle, and the loop speed carries the scale', () => {
-    const h = 300, v0 = groundSpeed(real, h);
-    assert.ok(Math.abs(v0 - real.motion.strideHeights * h / cycleMs(real)) < 1e-12);
-    const p = planWalk({distance: 900, height: h, manifest: real});
-    assert.ok(Math.abs(p.speed - v0 * p.scale) < 1e-12);
-    assert.ok(Math.abs(p.loop.distance - p.speed * p.loop.ms) < 1e-6);                 // loop covers speed x time
-    // the existing roaming speed was 0.6 x height per second; the animation implies about the same
-    assert.ok(Math.abs(v0 * 1000 / h - 0.6) < 0.05);
-});
-
-test('planner follows the manifest timing (frame time is configurable, no hard-coded 93 ms)', () => {
-    const m = structuredClone(real); for (const s of Object.values(m.sequences)) s.frameMs = 60;
-    const p = planWalk({distance: 900, height: 240, manifest: m});
-    assert.equal(p.start.ms, 7 * 60); assert.equal(p.stop.ms, 12 * 60); assert.equal(p.loop.ms, p.cycles * 10 * 60);
-    const faster = groundSpeed(m, 240), normal = groundSpeed(real, 240);
-    assert.ok(Math.abs(faster / normal - 93 / 60) < 1e-9);                             // shorter frames = proportionally faster ground speed
-    assert.equal(validateManifest(synth(5, 6, 9)).ok, true);
+test('frame time is configurable: it changes speed, not the distances the walk covers', () => {
+    const m = structuredClone(real); for (const q of Object.values(m.sequences)) q.frameMs = 60;
+    const a = planWalk({distance: 900, height: 240, manifest: real}), b = planWalk({distance: 900, height: 240, manifest: m});
+    assert.equal(a.cycles, b.cycles); assert.ok(Math.abs(a.total - b.total) < 1e-9);
+    assert.equal(cycleMs(m), 600); assert.equal(cycleMs(real), 930);
 });
 
 console.log(`\n${passed} passed${process.exitCode ? ', SOME FAILED' : ''}`);

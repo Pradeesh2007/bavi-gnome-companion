@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {CharacterController, DEFAULT_CONFIG} from '../lib/character/controller.js';
+import {rootMotion} from '../lib/character/walk.js';
 
 const real = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../assets/walk/walk.json', import.meta.url)), 'utf8'));
 const FRAME = real.sequences.start.frameMs;      // 93
@@ -99,16 +100,30 @@ test('roam walk: start(7) -> whole loop cycles -> stop(25), in order, one frame 
     assert.equal(t.actor.log.filter(e => e[0] === 'pose' && e[1] !== 'right').length, 0, 'no pose changes while walking');
 });
 
-test('movement and animation agree: loop distance per cycle stays within 20% of the stride (little foot sliding)', () => {
+test('movement and animation agree: while each frame is shown she advances exactly the manifest root motion (foot contact)', () => {
     const t = setup();
     runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
-    const f = t.actor.frames, stride = real.motion.strideHeights * 240;
-    const loopF = f.filter(x => x.seq === 'loop');
-    const cycleStarts = loopF.filter(x => x.i === 0);
-    for (let k = 1; k < cycleStarts.length; k++) {
-        const d = cycleStarts[k].x - cycleStarts[k - 1].x;
-        assert.ok(Math.abs(d / stride - 1) <= 0.2, `cycle ${k}: ${d.toFixed(1)} px vs stride ${stride.toFixed(1)}`);
+    const f = t.actor.frames, motion = rootMotion(real), k = 240 / real.frame.height;
+    // roam walks are snapped to whole cycles, so scale is exactly 1
+    for (let i = 1; i < f.length; i++) {
+        const prev = f[i - 1], expected = motion[prev.seq][prev.i] * k;
+        assert.ok(Math.abs((f[i].x - prev.x) - expected) < 0.01, `frame ${prev.seq}${prev.i}: moved ${(f[i].x - prev.x).toFixed(3)} px, manifest says ${expected.toFixed(3)}`);
     }
+    const cycleStarts = f.filter(x => x.seq === 'loop' && x.i === 0);
+    for (let c = 1; c < cycleStarts.length; c++) {
+        const d = cycleStarts[c].x - cycleStarts[c - 1].x, expectedStride = motion.loop.reduce((a, b) => a + b, 0) * k;
+        assert.ok(Math.abs(d - expectedStride) < 0.05, `cycle ${c}: ${d.toFixed(2)} vs ${expectedStride.toFixed(2)}`);
+    }
+});
+
+test('a roam walk is snapped to a whole-cycle distance (scale 1); summon to an exact target keeps the exact distance', () => {
+    const t = setup(); t.env.pointer = [1200, 500];
+    runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
+    assert.match(t.logs.find(l => /animated/.test(l)), /scale 1\.00/);
+    const t2 = setup(); t2.env.pointer = [1200, 500]; t2.clock.advance(100); t2.c.summon();
+    runUntil(t2.clock, () => t2.actor.frames.length > 0 && !t2.actor.walking);
+    const wanted = 1200 - t2.actor.width - 24;                    // summon target: left of the pointer (same rule as the 0.1 tests)
+    assert.ok(Math.abs(t2.actor.x - wanted) < 0.51, `ended at ${t2.actor.x}, wanted ${wanted}`);
 });
 
 test('left-facing walk (home bottom-right): mirrored direction, moves left, same frame logic', () => {
@@ -148,6 +163,16 @@ test('an interrupted walk never overshoots the work area and never moves backwar
     const [, target] = targetOf(t.logs), f = t.actor.frames;
     for (let i = 1; i < f.length; i++) assert.ok(f[i].x >= f[i - 1].x - 1e-6);
     assert.ok(t.actor.x <= target + 0.51 && t.actor.x >= f[0].x);
+});
+
+test('acknowledge (something was handed over): reacts when idle, never interrupts a walk or a reaction in progress', () => {
+    const t = setup();
+    t.c.acknowledge(); assert.equal(t.c._phase, 'reacting'); assert.ok(t.actor.log.some(e => e[0] === 'pose' && e[1] === 'front'));
+    runUntil(t.clock, () => t.c._phase === 'idle', 20000);
+    runUntil(t.clock, () => t.actor.frames.some(x => x.seq === 'loop' && x.i === 2));
+    const n = t.actor.frames.length; t.c.acknowledge();
+    assert.ok(t.actor.walking, 'still walking'); assert.notEqual(t.c._phase, 'reacting'); runUntil(t.clock, () => t.actor.frames.length > n + 3, 5000);
+    assert.ok(t.actor.frames.at(-1).seq === 'loop' || t.actor.frames.at(-1).seq === 'stop', 'the walk continued normally');
 });
 
 test('walking requested during the stop sequence: the stop finishes, then a new walk begins (no overlap)', () => {
@@ -234,7 +259,8 @@ test('shutdown mid-walk: all timers gone, no callbacks afterwards', () => {
 test('works with other frame counts and frame times (3/4/5 frames, 60 ms): nothing assumes 7/10/25/93', () => {
     const m = structuredClone(real);
     const frames = n => range(n, i => ({x: 2 + i * 10, y: 12, dy: 0}));
-    m.sequences = {start: {frameMs: 60, travelFrames: 3, frames: frames(3)}, loop: {frameMs: 60, frames: frames(4)}, stop: {frameMs: 60, travelFrames: 2, frames: frames(5)}};
+    const travel = n => range(n, i => 3 + (i % 3));
+    m.sequences = {start: {frameMs: 60, frames: frames(3), footTravel: travel(3)}, loop: {frameMs: 60, frames: frames(4), footTravel: travel(4)}, stop: {frameMs: 60, frames: frames(5), footTravel: travel(5)}};
     const t = setup({walk: m});
     runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
     const f = t.actor.frames, loops = f.filter(x => x.seq === 'loop').length;

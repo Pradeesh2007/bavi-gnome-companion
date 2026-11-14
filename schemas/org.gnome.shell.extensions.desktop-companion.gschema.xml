@@ -5,45 +5,45 @@
 
     <key name="hidden" type="b">
       <default>false</default>
-      <summary>Hide Bavi</summary>
-      <description>When true Bavi is hidden and all of her timers and animations are stopped.</description>
+      <summary>Hide the character</summary>
+      <description>When true the character is hidden and all of its timers and animations are stopped.</description>
     </key>
 
     <key name="paused" type="b">
       <default>false</default>
-      <summary>Pause Bavi</summary>
-      <description>When true Bavi freezes where she is: no roaming, no idle animation, no pointer tracking.</description>
+      <summary>Pause the character</summary>
+      <description>When true the character freezes where it is: no roaming, no idle animation, no pointer tracking.</description>
     </key>
 
     <key name="quiet-mode" type="b">
       <default>false</default>
       <summary>Quiet mode</summary>
-      <description>When true Bavi stays at her home position, does not roam and has no idle bobbing. She still reacts to clicks and still looks at the pointer.</description>
+      <description>When true the character stays at its home position, does not roam and has no idle bobbing. It still reacts to clicks and still looks at the pointer.</description>
     </key>
 
     <key name="focus-mode" type="b">
       <default>false</default>
       <summary>Focus mode</summary>
-      <description>When true Bavi stays at home with her back to you, completely still, and ignores the pointer. Clicking her still gets a short reaction.</description>
+      <description>When true the character stays at home with its back to you, completely still, and ignores the pointer. Clicking it still gets a short reaction.</description>
     </key>
 
     <key name="roaming" type="b">
       <default>true</default>
       <summary>Roam occasionally</summary>
-      <description>Allow Bavi to walk away from her home position now and then and return.</description>
+      <description>Allow the character to walk away from its home position now and then and return.</description>
     </key>
 
     <key name="pointer-look" type="b">
       <default>true</default>
       <summary>Look toward the pointer</summary>
-      <description>When the pointer is near, Bavi turns toward it.</description>
+      <description>When the pointer is near, the character turns toward it.</description>
     </key>
 
     <key name="character-height" type="i">
       <default>240</default>
       <range min="120" max="480"/>
       <summary>Character height</summary>
-      <description>Height of Bavi on screen in logical pixels.</description>
+      <description>Height of the character on screen in logical pixels.</description>
     </key>
 
     <key name="home-corner" type="s">
@@ -53,19 +53,25 @@
       </choices>
       <default>"bottom-left"</default>
       <summary>Home position</summary>
-      <description>Corner of the primary monitor's work area where Bavi lives.</description>
+      <description>Corner of the primary monitor's work area where the character lives.</description>
     </key>
 
     <key name="summon-shortcut" type="as">
       <default>["&lt;Super&gt;&lt;Alt&gt;b"]</default>
       <summary>Summon shortcut</summary>
-      <description>Keyboard shortcut that makes Bavi come to the pointer. It also shows her if she is hidden or paused.</description>
+      <description>Keyboard shortcut that makes the character come to the pointer. It also shows it if it is hidden or paused.</description>
+    </key>
+
+    <key name="character-name" type="s">
+      <default>''</default>
+      <summary>Character name</summary>
+      <description>Optional name the user gives the character. The empty string (the default) means no name has been assigned and none is shown. Written by the preferences window; at most 32 characters.</description>
     </key>
 
     <key name="backpack-shortcut" type="as">
       <default>["&lt;Super&gt;&lt;Alt&gt;i"]</default>
       <summary>Backpack shortcut</summary>
-      <description>Keyboard shortcut that opens Bavi's backpack. It works even while Bavi is hidden.</description>
+      <description>Keyboard shortcut that opens the backpack. It works even while the character is hidden.</description>
     </key>
 
     <key name="pocket-expiry-hours" type="i">

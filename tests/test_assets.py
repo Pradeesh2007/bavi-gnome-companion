@@ -91,6 +91,15 @@ check('the rows shifted into view by an offset, and the gutters, are fully trans
 r, g, b, a = [A[:, :, k].astype(int) for k in range(4)]
 green = int(((a >= 48) & (g > r + 25) & (g > b + 10)).sum()); check('shipped atlas has (almost) no green-dominant pixels', green < 400, green)
 
+# foot-contact data: one non-negative footTravel per frame, derived from the analysis file, footLock in range
+an = json.load(open(os.path.join(HERE, 'art-source', 'walk-foot-contact.json')))
+ft_ok = all(len(v['footTravel']) == len(v['frames']) and min(v['footTravel']) >= 0 for v in m['sequences'].values())
+check('every frame has a non-negative footTravel value', ft_ok)
+check('the analysis file matches the frames of every sequence (rerun tools/analyze-foot-contact.py if not)', all(an[k]['files'] == [f['source'] for f in m['sequences'][k]['frames']] for k in ('start', 'loop', 'stop')))
+check('footLock values are within 0..1 and there is no stale strideHeights/travelFrames', all(0 <= v <= 1 for v in m['motion']['footLock'].values()) and 'strideHeights' not in m['motion'] and all('travelFrames' not in s for s in m['sequences'].values()))
+loop_stride = sum(m['sequences']['loop']['footTravel']) / m['frame']['height']
+check(f'measured loop stride is about 0.43 x character height (got {loop_stride:.3f})', 0.40 < loop_stride < 0.46)
+
 # source frames unchanged against the recorded hashes
 hf = os.path.join(SRC, 'SHA256SUMS')
 if os.path.exists(hf):

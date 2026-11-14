@@ -1,9 +1,12 @@
 {
   "uuid": "desktop-companion@pradeesh2007.github.io",
   "name": "Desktop Companion",
-  "description": "Bavi, an animated anime companion who lives on your desktop. Release 0.2.1: walking animation (start, loop, stop sequences) and a fixed backpack window, on top of the backpack and character foundation.",
-  "shell-version": ["51"],
+  "description": "Bavi, an animated anime companion who lives on your desktop. Release 0.3.0: foot-grounded walking, optional character name, clipboard paste into the backpack, and support links.",
+  "shell-version": [
+    "51"
+  ],
+  "url": "https://github.com/Pradeesh2007/bavi-gnome-companion",
   "settings-schema": "org.gnome.shell.extensions.desktop-companion",
-  "version": 4,
-  "version-name": "0.2.1"
+  "version": 5,
+  "version-name": "0.3.0"
 }
