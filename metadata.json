@@ -1,6 +1,6 @@
 {
   "uuid": "desktop-companion@pradeesh2007.github.io",
-  "name": "Desktop Companion",
+  "name": "Bavi - Desktop Companion",
   "description": "Bavi, an animated anime companion who lives on your desktop. Release 0.3.0: foot-grounded walking, optional character name, clipboard paste into the backpack, and support links.",
   "shell-version": [
     "51"
@@ -8,5 +8,8 @@
   "url": "https://github.com/Pradeesh2007/bavi-gnome-companion",
   "settings-schema": "org.gnome.shell.extensions.desktop-companion",
   "version": 5,
-  "version-name": "0.3.0"
+  "version-name": "0.3.0",
+  "donations": {
+    "buymeacoffee": "pradeeshkuamr"
+  }
 }
