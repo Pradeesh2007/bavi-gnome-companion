@@ -20,13 +20,13 @@ const realLog = console.log;
 
 class FakeDisposer { repeat() { return 1; } once() { return 1; } cancel() {} }
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'bavi-ui-'));
-function make({hours = 24, name = ''} = {}) {
+async function make({hours = 24, name = ''} = {}) {
     errors.length = 0; instances.length = 0; stState.clipboard.reset();
     const service = new BackpackService({disposer: new FakeDisposer(), dataDir: tmp(), getExpiryHours: () => hours, createLaunchContext: () => null, onChanged: () => ui.refresh()});
-    service.start();
     const received = {count: 0};
     const ui = new BackpackUI({service, environment: {currentTime: () => 0}, getExpiryHours: () => hours, getName: () => nameBox.value, onReceived: () => { received.count++; }});
     nameBox.value = name; ui.received = received;
+    await service.start();                                   // after the UI exists: finishing the load calls ui.refresh()
     return {service, ui, dialog: () => instances.at(-1)};
 }
 const all = d => [...d.contentLayout.walk()];
@@ -43,14 +43,14 @@ const noErrors = () => assert.deepEqual(errors, []);
 let passed = 0; const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-test('the strict stand-in reproduces the reported failure, and orientation is the accepted form', () => {
+test('the strict stand-in reproduces the reported failure, and orientation is the accepted form', async () => {
     assert.throws(() => new St.BoxLayout({vertical: true}), /No property vertical on StBoxLayout/);
     assert.doesNotThrow(() => new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'x'}));
     assert.throws(() => new St.Label({nonsense: 1}), /No property nonsense on StLabel/);
 });
 
-test('opening the backpack builds the dialog without any error (the reported failure)', () => {
-    const t = make(); t.ui.open();
+test('opening the backpack builds the dialog without any error (the reported failure)', async () => {
+    const t = await make(); t.ui.open();
     noErrors(); const d = t.dialog();
     assert.equal(instances.length, 1); assert.equal(d.state, 0 /* OPENED */); assert.deepEqual(d.openArgs, []);
     assert.equal(d.styleClass, 'bavi-dialog'); assert.equal(d.initialFocus, entries(d)[0].clutter_text);
@@ -60,8 +60,8 @@ test('opening the backpack builds the dialog without any error (the reported fai
     assert.ok(text.includes('Backpack \u2014 0 of 12 slots') && text.includes('Pocket \u2014 0 of 12 \u00b7 items disappear after 24 h'));
 });
 
-test('close and reopen works repeatedly (Close button, then Escape)', () => {
-    const t = make();
+test('close and reopen works repeatedly (Close button, then Escape)', async () => {
+    const t = await make();
     for (let round = 0; round < 3; round++) {
         t.ui.open(); noErrors(); const d = t.dialog(); assert.equal(d.destroyed, false);
         if (round % 2 === 0) d.press('Close'); else assert.ok(d.pressKey(Clutter.KEY_Escape));
@@ -70,12 +70,12 @@ test('close and reopen works repeatedly (Close button, then Escape)', () => {
     assert.equal(instances.length, 3); noErrors();
 });
 
-test('opening while already open just refreshes (no second dialog)', () => {
-    const t = make(); t.ui.open(); t.ui.open(); assert.equal(instances.length, 1); noErrors();
+test('opening while already open just refreshes (no second dialog)', async () => {
+    const t = await make(); t.ui.open(); t.ui.open(); assert.equal(instances.length, 1); noErrors();
 });
 
-test('add note: empty note shows the error and keeps the form; a real note is saved and listed', () => {
-    const t = make(); t.ui.open(); const d = t.dialog();
+test('add note: empty note shows the error and keeps the form; a real note is saved and listed', async () => {
+    const t = await make(); t.ui.open(); const d = t.dialog();
     d.press('Add note'); assert.deepEqual(footer(d), ['Cancel', 'Save to backpack']);
     const [title, body] = formEntries(d); assert.equal(body.clutter_text.single_line_mode, false); assert.equal(body.clutter_text.line_wrap, true); assert.equal(body.clutter_text.activatable, false);
     d.press('Save to backpack'); assert.equal(status(d), 'The note is empty.'); assert.deepEqual(footer(d), ['Cancel', 'Save to backpack']);
@@ -85,8 +85,8 @@ test('add note: empty note shows the error and keeps the form; a real note is sa
     assert.equal(t.service.snapshot().backpack[0].text, 'milk\neggs'); noErrors();
 });
 
-test('add link: bad links give a clear error; a valid link saves (button and Enter)', () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); d.press('Add link');
+test('add link: bad links give a clear error; a valid link saves (button and Enter)', async () => {
+    const t = await make(); t.ui.open(); const d = t.dialog(); d.press('Add link');
     const [, url] = formEntries(d);
     for (const bad of ['example.org', 'ftp://x.y', 'javascript:alert(1)']) { url.set_text(bad); d.press('Save to backpack'); assert.match(status(d), /http/, bad); }
     url.set_text('https://example.org/a'); d.press('Save to backpack'); assert.equal(t.service.snapshot().backpack.length, 1);
@@ -94,15 +94,15 @@ test('add link: bad links give a clear error; a valid link saves (button and Ent
     assert.equal(t.service.snapshot().backpack.length, 2); noErrors();
 });
 
-test('destination toggle sends new items to the pocket, which shows when they expire', () => {
-    const t = make(); t.ui.open(); const d = t.dialog();
+test('destination toggle sends new items to the pocket, which shows when they expire', async () => {
+    const t = await make(); t.ui.open(); const d = t.dialog();
     d.press('Adding to: Backpack'); assert.ok(footer(d).includes('Adding to: Pocket (24 h)'));
     d.press('Add note'); formEntries(d)[1].set_text('temporary'); d.press('Save to pocket');
     assert.equal(t.service.snapshot().pocket.length, 1); assert.ok(labels(d).some(l => /expires in (24 h|23 h 59 min)/.test(l))); noErrors();
 });
 
 test('row buttons per kind; Keep moves a pocket item; links and files are removed at once, notes need a second click', async () => {
-    const t = make(); const f = path.join(tmp(), 'a.txt'); fs.writeFileSync(f, 'x');
+    const t = await make(); const f = path.join(tmp(), 'a.txt'); fs.writeFileSync(f, 'x');
     t.service._mutate(inv => inv.addFile({path: f}, 'backpack', Date.now(), 1000));
     t.service.addLink({url: 'https://example.org'}, 'backpack'); t.service.addText({title: 'N', text: 'body'}, 'backpack'); t.service.addText({title: 'P', text: 'pocket note'}, 'pocket');
     t.ui.open(); const d = t.dialog();
@@ -117,16 +117,16 @@ test('row buttons per kind; Keep moves a pocket item; links and files are remove
     click(d, 'Really remove?'); await tick(); assert.equal(t.service.snapshot().backpack.length, 1); noErrors();
 });
 
-test('search filters both sections live and shows "No matches."', () => {
-    const t = make(); t.service.addText({title: 'Shopping', text: 'milk'}, 'backpack'); t.service.addLink({url: 'https://example.org'}, 'pocket'); t.service.addText({title: 'Other', text: 'zzz'}, 'backpack');
+test('search filters both sections live and shows "No matches."', async () => {
+    const t = await make(); t.service.addText({title: 'Shopping', text: 'milk'}, 'backpack'); t.service.addLink({url: 'https://example.org'}, 'pocket'); t.service.addText({title: 'Other', text: 'zzz'}, 'backpack');
     t.ui.open(); const d = t.dialog(); const search = entries(d)[0];
     search.set_text('milk'); assert.ok(labels(d).some(l => l.includes('Shopping'))); assert.ok(!labels(d).some(l => l.includes('Other')));
     search.set_text('nothing like this'); assert.equal(labels(d).filter(l => l === 'No matches.').length, 2);
     search.set_text(''); assert.ok(labels(d).some(l => l.includes('Other'))); noErrors();
 });
 
-test('view a note, Copy it, go back with Back and with Escape', () => {
-    const t = make(); t.service.addText({title: 'Idea', text: 'line one\nline two'}, 'backpack'); t.ui.open(); const d = t.dialog();
+test('view a note, Copy it, go back with Back and with Escape', async () => {
+    const t = await make(); t.service.addText({title: 'Idea', text: 'line one\nline two'}, 'backpack'); t.ui.open(); const d = t.dialog();
     click(d, 'View'); assert.deepEqual(footer(d), ['Copy', 'Back']); assert.ok(labels(d).includes('line one\nline two'));
     d.press('Copy'); assert.equal(stState.clipboard.text, 'line one\nline two');
     d.press('Back'); assert.ok(footer(d).includes('Close')); click(d, 'View'); assert.ok(d.pressKey(Clutter.KEY_Escape)); assert.ok(footer(d).includes('Close'));
@@ -134,7 +134,7 @@ test('view a note, Copy it, go back with Back and with Escape', () => {
 });
 
 test('Add file: the dialog is closed while the portal chooser is open (modal grab released), then reopens with the result', async () => {
-    const t = make(); t.ui.open(); const first = t.dialog(); let closedDuringImport = null;
+    const t = await make(); t.ui.open(); const first = t.dialog(); let closedDuringImport = null;
     t.service.importFiles = async dest => { closedDuringImport = first.destroyed; assert.equal(dest, 'backpack'); return {cancelled: false, added: [{id: 1}], skipped: [{name: 'x.sh', reason: 'nope'}]}; };
     first.press('Add file\u2026'); await new Promise(r => setImmediate(r));
     assert.equal(closedDuringImport, true); assert.equal(instances.length, 2);
@@ -146,15 +146,15 @@ test('Add file: the dialog is closed while the portal chooser is open (modal gra
     t.dialog().press('Add file\u2026'); await new Promise(r => setImmediate(r)); assert.match(status(t.dialog()), /not available/); noErrors();
 });
 
-test('a named character: the title uses the name, and changes live while the window is open', () => {
-    const t = make({name: 'Mika'}); t.ui.open(); const d = t.dialog();
+test('a named character: the title uses the name, and changes live while the window is open', async () => {
+    const t = await make({name: 'Mika'}); t.ui.open(); const d = t.dialog();
     assert.ok(labels(d).includes('Mika\u2019s backpack'));
     nameBox.value = ''; t.ui.refreshTitle(); assert.ok(labels(d).includes('Backpack'));
     nameBox.value = 'Rin'; t.ui.refreshTitle(); assert.ok(labels(d).includes('Rin\u2019s backpack')); noErrors();
 });
 
 test('Paste: selected text becomes a note, the character acknowledges, and the clipboard is only read on demand', async () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
+    const t = await make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
     assert.equal(clip.reads, 0, 'opening the window never touches the clipboard'); clip.mimetypes = ['text/plain', 'UTF8_STRING']; clip.plain = 'remember the milk\nand eggs';
     d.press('Paste'); await tick(); await tick();
     assert.equal(clip.reads > 0, true); assert.equal(status(d), 'Added 1 note to the backpack.'); assert.equal(t.ui.received.count, 1);
@@ -163,7 +163,7 @@ test('Paste: selected text becomes a note, the character acknowledges, and the c
 });
 
 test('Paste: an http(s) address becomes a link; other schemes and javascript: are not links', async () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
+    const t = await make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
     clip.mimetypes = ['text/plain']; clip.plain = ' https://example.org/path '; d.press('Paste'); await tick(); await tick();
     assert.equal(t.service.snapshot().backpack[0].kind, 'link'); assert.equal(status(d), 'Added 1 link to the backpack.');
     clip.plain = 'javascript:alert(1)'; d.press('Paste'); await tick(); await tick();
@@ -171,7 +171,7 @@ test('Paste: an http(s) address becomes a link; other schemes and javascript: ar
 });
 
 test('Paste: files copied in the file manager are stored by reference and the originals are untouched', async () => {
-    const t = make(); const f = path.join(tmp(), 'report.txt'); fs.writeFileSync(f, 'original'); const mtime = fs.statSync(f).mtimeMs;
+    const t = await make(); const f = path.join(tmp(), 'report.txt'); fs.writeFileSync(f, 'original'); const mtime = fs.statSync(f).mtimeMs;
     t.ui.open(); const d = t.dialog(); const clip = stState.clipboard;
     clip.mimetypes = ['x-special/gnome-copied-files', 'text/uri-list', 'text/plain']; clip.content['text/uri-list'] = `file://${f}\r\n`;
     d.press('Paste'); await tick(); await tick();
@@ -183,7 +183,7 @@ test('Paste: files copied in the file manager are stored by reference and the or
 });
 
 test('Paste with a full backpack: clear explanation, nothing replaced, content stays on the clipboard', async () => {
-    const t = make(); for (let i = 0; i < 12; i++) t.service.addText({text: `n${i}`}, 'backpack');
+    const t = await make(); for (let i = 0; i < 12; i++) t.service.addText({text: `n${i}`}, 'backpack');
     t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; const before = JSON.stringify(t.service.snapshot().backpack);
     clip.mimetypes = ['text/plain']; clip.plain = 'one more'; d.press('Paste'); await tick(); await tick();
     assert.match(status(d), /12 of 12 slots/); assert.match(status(d), /Nothing was replaced or removed/); assert.match(status(d), /still on your clipboard/);
@@ -193,7 +193,7 @@ test('Paste with a full backpack: clear explanation, nothing replaced, content s
 });
 
 test('Paste: rejected or unusable clipboard content gives a clear message and changes nothing', async () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; const store = () => fs.readFileSync(t.service.storagePath ?? '/nonexistent', 'utf8');
+    const t = await make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; const store = () => fs.readFileSync(t.service.storagePath ?? '/nonexistent', 'utf8');
     d.press('Paste'); await tick(); await tick(); assert.match(status(d), /no file, link or text/);                          // empty clipboard
     clip.mimetypes = ['image/png']; d.press('Paste'); await tick(); await tick(); assert.match(status(d), /no file, link or text/);  // image only
     clip.reset(); clip.mimetypes = ['text/uri-list']; clip.content['text/uri-list'] = 'javascript:alert(1)\r\nsmb://host/share';
@@ -204,32 +204,32 @@ test('Paste: rejected or unusable clipboard content gives a clear message and ch
 });
 
 test('Paste into the pocket, and Paste after the window was closed while reading, do not throw', async () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; clip.mimetypes = ['text/plain']; clip.plain = 'later';
+    const t = await make(); t.ui.open(); const d = t.dialog(); const clip = stState.clipboard; clip.mimetypes = ['text/plain']; clip.plain = 'later';
     d.press('Adding to: Backpack'); d.press('Paste'); d.press('Close');                          // closes before the async read finishes
     await tick(); await tick(); assert.equal(t.service.snapshot().pocket.length, 1); noErrors();
 });
 
-test('a message from an earlier session is not shown when the backpack is opened again', () => {
-    const t = make(); t.ui.open(); t.dialog().press('Add note'); formEntries(t.dialog())[1].set_text('x'); t.dialog().press('Save to backpack');
+test('a message from an earlier session is not shown when the backpack is opened again', async () => {
+    const t = await make(); t.ui.open(); t.dialog().press('Add note'); formEntries(t.dialog())[1].set_text('x'); t.dialog().press('Save to backpack');
     assert.equal(status(t.dialog()), 'Note saved to the backpack.'); t.dialog().press('Close');
     t.ui.open(); assert.equal(status(t.dialog()), null); noErrors();
 });
 
-test('a dialog that cannot take the Shell grab is cleaned up without throwing, and a later open works', () => {
-    const t = make(); const real = ModalDialog.prototype.open; ModalDialog.prototype.open = () => false;
+test('a dialog that cannot take the Shell grab is cleaned up without throwing, and a later open works', async () => {
+    const t = await make(); const real = ModalDialog.prototype.open; ModalDialog.prototype.open = () => false;
     const logs = []; console.log = (...a) => logs.push(a.join(' '));
     try { t.ui.open(); } finally { ModalDialog.prototype.open = real; console.log = realLog; }
     assert.ok(logs.some(l => /could not take the Shell grab/.test(l))); assert.equal(instances.at(-1).destroyed, true); noErrors();
     t.ui.open(); assert.equal(t.dialog().destroyed, false);
 });
 
-test('destroy() while open closes and destroys the dialog; open() afterwards does nothing', () => {
-    const t = make(); t.ui.open(); const d = t.dialog(); t.ui.destroy();
+test('destroy() while open closes and destroys the dialog; open() afterwards does nothing', async () => {
+    const t = await make(); t.ui.open(); const d = t.dialog(); t.ui.destroy();
     assert.equal(d.destroyed, true); t.ui.open(); assert.equal(instances.length, 1); noErrors();
 });
 
-test('an error inside the dialog build is caught and logged, not thrown into the Shell', () => {
-    const t = make(); const real = t.service.snapshot; t.service.snapshot = () => { throw new Error('boom'); };
+test('an error inside the dialog build is caught and logged, not thrown into the Shell', async () => {
+    const t = await make(); const real = t.service.snapshot; t.service.snapshot = () => { throw new Error('boom'); };
     assert.doesNotThrow(() => t.ui.open()); assert.ok(errors.some(e => /could not open the backpack/.test(e)) && errors.some(e => /boom/.test(e)));
     t.service.snapshot = real; errors.length = 0; t.ui.open(); assert.equal(t.dialog().destroyed, false); noErrors();
 });

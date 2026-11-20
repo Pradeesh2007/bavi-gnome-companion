@@ -42,3 +42,52 @@ the pointer is, and that it ended, but cannot learn whether it was dropped or ca
 * "Drag a local file from Files onto Bavi" / "drag text onto Bavi": **not possible**; replaced by Paste.
 * "Bavi gives a small reaction": implemented for Paste (same reaction as a click, never interrupts a walk).
 * Full backpack, validation, storage by reference, no execution, no clipboard monitoring: implemented in the shared receiving path.
+
+---
+
+# Update for 0.3.1: reinvestigation and the inference design
+
+The 0.3.0 conclusion was re-checked against the same exact `51.1` tags (nothing was taken on trust), this time also looking for any supported hook
+that could make the interaction possible. This is source reading only: **none of it has been run on a real GNOME Shell.**
+
+## Final technical conclusion
+1. **A real drop onto a Shell actor is impossible in GNOME Shell 51.1 / mutter 51.1 (Wayland).** Confirmed again: `Meta.Dnd` has no drop signal;
+   the Shell's `XdndHandler` only calls `handleDragOver`; at button release with no client surface under the pointer mutter cancels the drag and unsets
+   the DND selection (`meta-wayland-data-device.c:629-647`), and Escape does the same (`drag_grab_key`, lines 664-693). The source application is told the
+   drag was cancelled.
+2. **What an extension *can* observe with supported mechanisms:**
+
+| Mechanism | What it gives | Source (51.1) |
+|---|---|---|
+| `Main.xdndHandler` signals `drag-begin` / `drag-end` | a drag from another application started / ended (ended = release **or** cancel) | `js/ui/xdndHandler.js:38, 51` |
+| `actor._delegate.handleDragOver(source, ...)` | called for the reactive actor under the pointer on every motion of the external drag, i.e. hover over the character | `xdndHandler.js:114-116` |
+| `DND.dragMonitors[i].dragMotion` | the same motion events for any actor (not used: the actor hook is enough) | `xdndHandler.js:104-105` |
+| `global.display.get_selection()` + `Meta.Selection.transfer_async(SELECTION_DND, mimetype, maxSize, output, ...)` | the source's offered types and, while the drag is in progress, its data into a stream, with a **maximum size** | `mutter src/meta/display.h:273`, `meta-selection.h:54`, `meta-selection-source.h:30`; Wayland sources are read through `meta_wayland_data_source_send` (the same path `St.Clipboard` uses) |
+| `global.get_pointer()` | pointer position and button mask | used throughout `js/ui` |
+| a drop event | **does not exist** | `meta-dnd.c` defines three signals only |
+
+3. **Therefore the closest technically sound alternative is drop inference** (implemented, experimental): hover is detected through the Shell's own hook, the
+   data is read once while she is hovered (capped, only `text/uri-list` or plain text), and a drop is *inferred* when the drag ends with the pointer over her and the primary
+   button released (still held = Escape = cancel; unknown state = no drop). Logic: `lib/dropdetect.js`; Shell part: `lib/dropzone.js`.
+4. It is **not a real drop**: the source application always shows the drag as cancelled (for example Files snaps the icon back). Originals are never moved or deleted by
+   it, because the drag really is cancelled; a text drag leaves the text where it was. It only reads data; it never writes to the source.
+
+## What is NOT verified (the nested-session test must settle each)
+* That GJS exposes `global.display.get_selection()` and `Meta.SelectionType.SELECTION_DND`: no Shell JS file uses them. `DropZone.start()` checks at runtime and disables itself if absent.
+* That a source application serves its data to the compositor *during* the drag, while no target has accepted it (GTK and Qt should; Firefox, Chromium/Electron, XWayland clients are unknown).
+* That the primary-button bit is already cleared in `global.get_pointer()` when `drag-end` fires on release (the inference depends on it; `unknown` is treated as "no drop").
+* Which mime types real applications offer (Files: `text/uri-list`; browsers: link and text types). Only `text/uri-list` and four plain-text types are read.
+* XWayland/X11 drags (`meta-xwayland-dnd.c` was not analysed; they may not reach these hooks).
+* How the 250 ms hover window behaves with real pointer speeds.
+
+If the inference proves unreliable the setting `drop-onto-character` can be turned off (preferences, or `ctl gsettings`), and **Paste** in the backpack remains the dependable path. Two heavier
+alternatives were considered and not started: a separate GTK helper window as a real Wayland drop target (needs a second process and window placement the Shell does not guarantee), and
+treating `application/x-rootwindow-drop` sources specially (only some Qt/KDE sources offer it).
+
+## What was built, and safety rules
+* Hover glow on her, a short message bubble for feedback, a small acknowledgement reaction, roaming held while any external drag is in progress (a walk already under way finishes).
+* Payload: at most 256 KiB, read once per drag, into memory only, never executed; classified by `intake.js` (files by `file://` reference regardless of extension or MIME type, `http(s)` links,
+  text as a note); other schemes, binary text and over-long text are rejected with a reason.
+* Storage: the existing service and limits (12 slots, pocket 12, expiry, duplicate checks, atomic save). **Full backpack:** the item goes to the pocket with an explicit message
+  ("press Keep to move it"); if the pocket is full too nothing is stored and nothing is replaced. One drag yields at most one decision, so it cannot be stored twice.
+* Cleanup: both Shell signals are disconnected, the actor hook removed, the leave timer and any unfinished read cancelled, the glow cleared and the roaming hold released on disable.

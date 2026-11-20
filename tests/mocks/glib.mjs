@@ -11,4 +11,9 @@ export default {
     uri_unescape_string(s) { return decodeURIComponent(s); },
     build_filenamev(parts) { return parts.join('/'); },
     get_user_data_dir() { return process.env.MOCK_DATA_DIR; },
+    PRIORITY_DEFAULT: 0, SOURCE_REMOVE: false, SOURCE_CONTINUE: true,
+    _timers: new Map(), _nextTimer: 1,
+    timeout_add(priority, ms, cb) { const id = this._nextTimer++; this._timers.set(id, cb); return id; },
+    Source: {remove(id) { const t = globalThis.__glibTimers; return t ? t.delete(id) : true; }},
+    getenv(name) { return process.env[name] ?? null; },
 };

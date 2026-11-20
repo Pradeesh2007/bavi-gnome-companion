@@ -18,3 +18,8 @@
 .bavi-row-sub { font-size: 90%; color: rgba(255, 255, 255, 0.6); }
 .bavi-row-buttons { spacing: 4px; }
 .bavi-button { padding: 3px 10px; }
+
+/* Receiving (lib/dropzone.js): glow while an item is dragged over the character, and the short message above her head. */
+.bavi-drop-ready { background-color: rgba(120, 190, 255, 0.18); border-radius: 18px; box-shadow: 0 0 16px 2px rgba(120, 190, 255, 0.6); }
+.bavi-bubble { background-color: rgba(28, 28, 34, 0.94); color: #ffffff; padding: 8px 12px; border-radius: 12px; max-width: 320px; font-size: 90%; }
+.bavi-bubble-error { background-color: rgba(150, 44, 44, 0.96); }

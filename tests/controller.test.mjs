@@ -46,11 +46,12 @@ class FakeActor {
     }
     _t(ev) { this.log.push(ev); }
     setHeight(px) { this.height = px; this.width = Math.round(px * 173 / 480); }
-    setBounds() {} setPosition() {} setCharacterVisible(v) { this.visible = v; }
+    setBounds(a) { this.bounds = a; } setPosition(x, y) { this.pos = {x, y}; } setCharacterVisible(v) { this.visible = v; }
+    easeBreath(v) { this.log.push(['breath', v]); }
     setPose(p) { this.pose = p; this._t(['pose', p]); }
     getTranslationX() { if (!this.tx) return this.x; const t = Math.min(1, (this.clock.now - this.tx.start) / this.tx.dur); return this.tx.from + (this.tx.to - this.tx.from) * MODES[this.tx.mode](t); }
     easeTranslationX(to, dur, mode) { const from = this.getTranslationX(); this.tx = {from, to, dur, start: this.clock.now, mode}; this._t(['easeX', Math.round(to), dur, mode]); }
-    easeTranslationY() {} setTranslationY(v) { this.y = v; }
+    easeTranslationY(v) { this.log.push(['easeY', v]); } setTranslationY(v) { this.y = v; }
     setTranslationX(v) { this.x = v; this.tx = null; }
     stopAnimations() { this.x = this.getTranslationX(); this.tx = null; }
     beginWalk(d) { this.walkDir = d; this._t(['beginWalk', d]); }
@@ -58,9 +59,9 @@ class FakeActor {
     endWalk() { if (!this.walking) return; this.walking = false; this._t(['endWalk']); }
 }
 const makeEnv = (over = {}) => ({
-    animations: true, overview: false, pointer: [900, 500],
+    animations: true, overview: false, pointer: [900, 500], area: {x: 0, y: 0, width: 1920, height: 1080},
     animationsEnabled() { return this.animations; }, overviewVisible() { return this.overview; },
-    getWorkArea() { return {x: 0, y: 0, width: 1920, height: 1080}; }, getPointer() { return this.pointer; }, watchWorkArea() {},
+    getWorkArea() { return {...this.area}; }, getPointer() { return this.pointer; }, watchWorkArea(cb) { this.workAreaChanged = cb; },
     ...over,
 });
 function setup({walk = real, walkReady = true, config = {}} = {}) {
@@ -124,6 +125,48 @@ test('a roam walk is snapped to a whole-cycle distance (scale 1); summon to an e
     runUntil(t2.clock, () => t2.actor.frames.length > 0 && !t2.actor.walking);
     const wanted = 1200 - t2.actor.width - 24;                    // summon target: left of the pointer (same rule as the 0.1 tests)
     assert.ok(Math.abs(t2.actor.x - wanted) < 0.51, `ended at ${t2.actor.x}, wanted ${wanted}`);
+});
+
+test('grounding: the sprite box is flush with the bottom of the work area (feet on the floor) at both corners and every height', () => {
+    for (const corner of ['bottom-left', 'bottom-right']) for (const height of [120, 240, 360, 480]) {
+        const t = setup({config: {corner, height}});
+        assert.equal(t.actor.pos.y + t.actor.height, 1080, `${corner} h=${height}: y=${t.actor.pos.y}`);
+        assert.equal(t.actor.pos.x, 0);
+    }
+});
+
+test('grounding: changing the character height or the work area keeps the feet on the new floor', () => {
+    const t = setup(); assert.equal(t.actor.pos.y + t.actor.height, 1080);
+    t.c.configure({...DEFAULT_CONFIG, height: 360}); assert.equal(t.actor.pos.y + t.actor.height, 1080);
+    t.env.area = {x: 0, y: 32, width: 1280, height: 768}; t.env.workAreaChanged(); t.clock.advance(100);
+    assert.equal(t.actor.pos.y + t.actor.height, 768, 'floor follows the work area'); assert.deepEqual(t.actor.bounds, {x: 0, y: 32, width: 1280, height: 768});
+});
+
+test('grounding: standing never lifts her feet (idle breathes about the feet instead of bobbing), and a walk never changes her height above the floor', () => {
+    const t = setup();
+    t.clock.advance(5500);                                      // idle only (the first roam starts after 6 s)
+    assert.ok(t.actor.log.some(e => e[0] === 'breath'), 'idle breathing runs');
+    assert.equal(t.actor.log.filter(e => e[0] === 'easeY').length, 0, 'no vertical translation while standing');
+    runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
+    assert.equal(t.actor.log.filter(e => e[0] === 'easeY').length, 0, 'no vertical translation during the animated walk'); assert.equal(t.actor.y, 0);
+    assert.equal(t.actor.pos.y + t.actor.height, 1080, 'still on the floor after the walk');
+});
+
+test('grounding: left-facing and right-facing walks use the same floor line', () => {
+    for (const corner of ['bottom-left', 'bottom-right']) {
+        const t = setup({config: {corner}}); runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
+        assert.equal(t.actor.pos.y, 1080 - 240, corner); assert.equal(t.actor.y, 0);
+    }
+});
+
+test('walking assets arriving after start (asynchronous load): glide until then, animated walk afterwards; a controller without assets never breaks', () => {
+    const t = setup({walk: null});
+    runUntil(t.clock, () => t.logs.some(l => /arrived at/.test(l)));
+    assert.equal(t.actor.frames.length, 0); assert.ok(t.logs.some(l => /glide/.test(l)), 'glides while no assets are loaded');
+    t.c.setWalk(real);                                                       // the loader finished
+    t.c.returnHome(); runUntil(t.clock, () => !t.actor.walking && t.c._phase === 'idle', 30000);
+    t.c._decide('roam'); runUntil(t.clock, () => t.actor.frames.length > 0 && !t.actor.walking);
+    assert.ok(t.actor.frames.length > 0, 'animated walk after setWalk'); assert.equal(t.c._phase, 'idle');
 });
 
 test('left-facing walk (home bottom-right): mirrored direction, moves left, same frame logic', () => {

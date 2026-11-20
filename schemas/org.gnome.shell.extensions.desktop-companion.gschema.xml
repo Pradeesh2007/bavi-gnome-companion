@@ -62,6 +62,12 @@
       <description>Keyboard shortcut that makes the character come to the pointer. It also shows it if it is hidden or paused.</description>
     </key>
 
+    <key name="drop-onto-character" type="b">
+      <default>true</default>
+      <summary>Accept drags onto the character (experimental)</summary>
+      <description>When true, dragging a file, text or web link from another application over the character and releasing it stores it in the backpack. GNOME Shell cannot deliver real drops, so a drop is inferred when the drag ends over the character with the primary button released; the source application shows the drag as cancelled. The Paste button in the backpack always works.</description>
+    </key>
+
     <key name="character-name" type="s">
       <default>''</default>
       <summary>Character name</summary>

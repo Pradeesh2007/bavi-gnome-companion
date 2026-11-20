@@ -100,6 +100,23 @@ check('footLock values are within 0..1 and there is no stale strideHeights/trave
 loop_stride = sum(m['sequences']['loop']['footTravel']) / m['frame']['height']
 check(f'measured loop stride is about 0.43 x character height (got {loop_stride:.3f})', 0.40 < loop_stride < 0.46)
 
+# ground contact: the idle sprites and every drawn walk frame (after its offset) end at the bottom of the 480-px frame, so
+# placing the sprite box flush with the floor puts the soles on the floor (code side: tests/geometry.test.mjs, controller tests)
+def lowest_row(arr, th=128):
+    rows = np.where((arr[:, :, 3] >= th).any(axis=1))[0]
+    return int(rows.max())
+idle = {n: lowest_row(np.array(Image.open(os.path.join(HERE, 'assets', f'bavi_{n}.png')).convert('RGBA'))) for n in ('front', 'right', 'left', 'back')}
+check('idle sprites end at their bottom row (no empty space under the soles)', all(r >= 478 for r in idle.values()), idle)
+bottoms = []
+for seq, sq in m['sequences'].items():
+    for f in sq['frames']:
+        fr = A[f['y']:f['y'] + fh, f['x']:f['x'] + fw]
+        bottoms.append(lowest_row(fr) + f['dy'])
+check(f'every walk frame ends at the frame bottom after its offset (rows {min(bottoms):.1f}..{max(bottoms):.1f} of 479; within 1 px)', min(bottoms) >= 478.0 and max(bottoms) <= 480.0, (min(bottoms), max(bottoms)))
+st1 = m['sequences']['start']['frames'][0]; sp25 = m['sequences']['stop']['frames'][-1]
+stand = [lowest_row(A[f['y']:f['y'] + fh, f['x']:f['x'] + fw]) + f['dy'] for f in (st1, sp25)]
+check('the standing frames of the walk end on the same row as the idle sprite (no step when switching)', all(abs(v - idle['right']) <= 1.0 for v in stand), (stand, idle['right']))
+
 # source frames unchanged against the recorded hashes
 hf = os.path.join(SRC, 'SHA256SUMS')
 if os.path.exists(hf):

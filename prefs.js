@@ -162,6 +162,16 @@ export default class DesktopCompanionPreferences extends ExtensionPreferences {
         settings.bind('pocket-expiry-hours', expiryRow, 'value', Gio.SettingsBindFlags.DEFAULT);
         backpackGroup.add(expiryRow);
 
+        const dropRow = new Adw.SwitchRow({
+            title: 'Accept drags onto the character (experimental)',
+            subtitle: 'Drag a file, text or web link over her and release it to store it in the backpack. GNOME Shell cannot deliver ' +
+                'real drops, so this is inferred when you let go over her, and the other application will show the drag as cancelled. ' +
+                'Paste in the backpack always works.',
+            use_markup: false,
+        });
+        settings.bind('drop-onto-character', dropRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        backpackGroup.add(dropRow);
+
         // Character name (optional). The entry always starts empty so its placeholder is visible; the current name is
         // shown in the row above it. Names are validated by lib/name.js. Rows use plain text, never markup.
         const nameGroup = new Adw.PreferencesGroup({
@@ -216,7 +226,11 @@ export default class DesktopCompanionPreferences extends ExtensionPreferences {
             nameEntry.set_text('');
             settings.set_string('character-name', '');
         });
-        settings.connect('changed::character-name', refreshNames);
+        const nameSignalId = settings.connect('changed::character-name', refreshNames);
+        window.connect('close-request', () => {
+            settings.disconnect(nameSignalId);
+            return false;
+        });
         refreshNames();
 
         // Support

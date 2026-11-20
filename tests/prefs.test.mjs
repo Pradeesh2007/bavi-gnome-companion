@@ -89,6 +89,11 @@ test('copy buttons copy the exact URLs; a launcher failure shows a toast, a dism
     const n = p.window.toasts.length; p.button('View on GitHub').emit('clicked'); launches.at(-1).cb({fail: Object.assign(new Error('dismissed'), {matches: () => true})}); assert.equal(p.window.toasts.length, n);
 });
 
+test('the experimental drop switch exists, is bound to its setting, and says why it is experimental', () => {
+    const p = open(); const row = p.all.find(x => x.title === 'Accept drags onto the character (experimental)'); assert.ok(row); assert.equal(row.use_markup, false);
+    assert.match(row.subtitle, /inferred/); assert.match(row.subtitle, /Paste in the backpack always works/);
+});
+
 test('no advertisements or prompts: nothing is opened or written just by opening the window', () => {
     const p = open(); assert.equal(launches.length, 0); assert.equal(p.settings.writes.length, 0); assert.equal(p.window.toasts.length, 0);
 });

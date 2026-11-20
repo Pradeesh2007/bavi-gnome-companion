@@ -38,7 +38,10 @@ if [ -z "$method" ]; then
     STAGE="$(mktemp -d "${TMPDIR:-/tmp}/desktop-companion-pack.XXXXXXXX")" || exit 1
     trap 'rm -rf -- "$STAGE"' EXIT
     copy_runtime "$STAGE/ext" || exit 1
-    glib-compile-schemas "$STAGE/ext/schemas" || exit 1
+    # Validate only. A compiled schema must NOT be shipped for GNOME 45+: `gnome-extensions install` and the Shell's extension
+    # downloader run glib-compile-schemas themselves (extensions-tool command-install.c, js/ui/extensionDownloader.js), and
+    # tools/install.sh and tools/nested-test.sh compile in their own destination.
+    glib-compile-schemas --strict --dry-run "$STAGE/ext/schemas" || exit 1
     rm -f "$ZIP"
     python3 - "$STAGE/ext" "$ZIP" <<'PY' || exit 1
 import os, sys, zipfile
