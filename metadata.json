@@ -1,6 +1,6 @@
 {
   "uuid": "desktop-companion@pradeesh2007.github.io",
-  "name": "Desktop Companion",
+  "name": "Bavi - Desktop Companion",
   "description": "Bavi, an animated anime desktop companion with a small backpack for files, notes and links. Privacy: the clipboard is read only when you press Paste in the backpack (and written only when you press Copy); it is never monitored or polled, and nothing is sent anywhere. Items you drag over the character are read only while you hold them over her.",
   "shell-version": [
     "51"
@@ -8,5 +8,8 @@
   "url": "https://github.com/Pradeesh2007/bavi-gnome-companion",
   "settings-schema": "org.gnome.shell.extensions.desktop-companion",
   "version": 6,
-  "version-name": "0.3.1"
+  "version-name": "0.3.1",
+   "donations": {
+    "buymeacoffee": "pradeeshkuamr"
+  }
 }
